@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { settingsCommand } from './register'
+import { DEFAULT_PREFS, FLASH_STEPS, applySet, listPrefs, readPrefs } from './register'
 
 const MIN = 60_000
 const band = (isWorking = false) =>
@@ -240,8 +240,19 @@ test('the details list the advisor calls, with the Ctrl+O hint on terminal only'
   }
 })
 
+
 // ---------- settings ----------
 
+/** Starts the mod the way a session does, with `prefs` already saved in its store. */
+const start = async ($: any, on: On, prefs?: Record<string, unknown>, uses?: Parameters<typeof engine>[1]) => {
+  const clock = mock.clock(on, { now: 0 })
+  mock.store(on, prefs ? { prefs } : undefined)
+  engine(on, uses)
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  return clock
+}
+
+/** The details, drawn fresh. */
 const open = async ($: any, surface: 'terminal' | 'desktop' = 'terminal') => {
   const ui = await $.ui.mount({ ...band(), surface })
   await ui.press({ key: 'sb-toggle' })
@@ -249,25 +260,27 @@ const open = async ($: any, surface: 'terminal' | 'desktop' = 'terminal') => {
   return $.ui.mount({ ...band(), surface })
 }
 
-test('hiding gauges leaves no stray separator', { options: { showContext: false, show5h: false } }, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on)
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+/** The details with the Settings section open, drawn fresh. */
+const openSettings = async ($: any, surface: 'terminal' | 'desktop' = 'terminal') => {
+  let ui = await open($, surface)
+  await ui.press({ key: 'sb-settings' })
+  await ui.unmount()
+  return $.ui.mount({ ...band(), surface })
+}
+
+test('hiding gauges leaves no stray separator', async ($, on) => {
+  await start($, on, { showContext: false, show5h: false })
   await $.session.measure(measure(21, 37, 42))
   const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
   expect(await ui.find({ text: /Context/ })).toBeUndefined()
-  expect(await ui.find({ text: /^5h$|^5h /, })).toBeUndefined()
+  expect(await ui.find({ text: /^37%$/ })).toBeUndefined()
   expect(await ui.find({ text: /^42%$/ })).toBeDefined()
   expect(await ui.find({ text: /│/ })).toBeUndefined()
   await ui.unmount()
 })
 
-test('showAdvisor off hides the chip, the note and the details section', { options: { showAdvisor: false } }, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on, [advisorUse('srv_1')])
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+test('showAdvisor off hides the chip, the note and the details section', async ($, on) => {
+  await start($, on, { showAdvisor: false }, [advisorUse('srv_1')])
   await step($)
   let ui = await $.ui.mount({ ...band(true), surface: 'terminal' })
   expect(await ui.find({ text: /Advisor/ })).toBeUndefined()
@@ -279,11 +292,8 @@ test('showAdvisor off hides the chip, the note and the details section', { optio
   await ui.unmount()
 })
 
-test('advisorFlashSeconds 0 turns the note off but keeps the chip', { options: { advisorFlashSeconds: 0 } }, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on, [advisorUse('srv_1')])
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+test('advisorFlashSeconds 0 turns the note off but keeps the chip', async ($, on) => {
+  await start($, on, { advisorFlashSeconds: 0 }, [advisorUse('srv_1')])
   await step($)
   const ui = await $.ui.mount({ ...band(true), surface: 'terminal' })
   expect(await ui.find({ text: /Advisor consulted/ })).toBeUndefined()
@@ -291,11 +301,8 @@ test('advisorFlashSeconds 0 turns the note off but keeps the chip', { options: {
   await ui.unmount()
 })
 
-test('showCost off removes every dollar figure', { options: { showCost: false } }, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on)
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+test('showCost off removes every dollar figure', async ($, on) => {
+  await start($, on, { showCost: false })
   await $.session.measure(measure(21, 37, 42, 1.5))
   await step($)
   let ui = await $.ui.mount({ ...band(), surface: 'terminal' })
@@ -308,11 +315,8 @@ test('showCost off removes every dollar figure', { options: { showCost: false } 
   await ui.unmount()
 })
 
-test('showRate off: a working band shows the cache countdown instead', { options: { showRate: false } }, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on)
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+test('showRate off: a working band shows the cache countdown instead', async ($, on) => {
+  await start($, on, { showRate: false })
   await step($)
   const ui = await $.ui.mount({ ...band(true), surface: 'terminal' })
   expect(await ui.find({ text: /new tok\/min/ })).toBeUndefined()
@@ -320,22 +324,16 @@ test('showRate off: a working band shows the cache countdown instead', { options
   await ui.unmount()
 })
 
-test('showCache off: no countdown on the band', { options: { showCache: false } }, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on)
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+test('showCache off: no countdown on the band', async ($, on) => {
+  await start($, on, { showCache: false })
   await step($)
   const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
   expect(await ui.find({ text: /Cache warm/ })).toBeUndefined()
   await ui.unmount()
 })
 
-test('showAlerts off: a full context stays quiet', { options: { showAlerts: false } }, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on)
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+test('showAlerts off: a full context stays quiet', async ($, on) => {
+  await start($, on, { showAlerts: false })
   await $.session.measure(measure(84, 37, 42))
   const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
   expect(await ui.find({ text: /Context filling up/ })).toBeUndefined()
@@ -343,30 +341,19 @@ test('showAlerts off: a full context stays quiet', { options: { showAlerts: fals
   await ui.unmount()
 })
 
-test(
-  'every details section off draws no box, and the sections turn off one by one',
-  { options: { detailsNow: false, detailsLimits: false, detailsCache: false, detailsSession: false, showAdvisor: false } },
-  async ($, on) => {
-    mock.clock(on, { now: 0 })
-    mock.store(on)
-    engine(on)
-    await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
-    await $.session.measure(measure(21, 37, 42))
-    await step($)
-    const ui = await open($)
-    for (const label of ['Limits', 'Cache', 'This session', 'Right now', 'Advisor'])
-      expect(await ui.find({ text: new RegExp(`^${label}$`) })).toBeUndefined()
-    expect(await ui.find({ text: /^Status$/ })).toBeUndefined()
-    expect(await ui.find({ text: /Context/ })).toBeDefined()
-    await ui.unmount()
-  },
-)
+test('every details section off leaves only the Settings button', async ($, on) => {
+  await start($, on, { detailsNow: false, detailsLimits: false, detailsCache: false, detailsSession: false, showAdvisor: false })
+  await $.session.measure(measure(21, 37, 42))
+  await step($)
+  const ui = await open($)
+  for (const label of ['Limits', 'Cache', 'This session', 'Right now', 'Advisor'])
+    expect(await ui.find({ text: new RegExp(`^${label}$`) })).toBeUndefined()
+  expect(await ui.find({ text: /Settings/ })).toBeDefined()
+  await ui.unmount()
+})
 
-test('one details section off leaves the others', { options: { detailsCache: false } }, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on)
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+test('one details section off leaves the others', async ($, on) => {
+  await start($, on, { detailsCache: false })
   await $.session.measure(measure(21, 37, 42))
   await step($)
   const ui = await open($)
@@ -376,54 +363,111 @@ test('one details section off leaves the others', { options: { detailsCache: fal
   await ui.unmount()
 })
 
-test('everything off on the band: no row at all, and no crash', {
-  options: { showContext: false, show5h: false, showWeek: false, showCache: false, showCost: false, showRate: false, showAdvisor: false },
-}, async ($, on) => {
-  mock.clock(on, { now: 0 })
-  mock.store(on)
-  engine(on)
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+test('everything off on the band: no row at all, and no crash', async ($, on) => {
+  await start($, on, { showContext: false, show5h: false, showWeek: false, showCache: false, showCost: false, showRate: false, showAdvisor: false })
   await step($)
   const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
   expect(await ui.find({ text: /Context|Cache|Week|5h/ })).toBeUndefined()
   await ui.unmount()
 })
 
-const rows = [
-  { key: 'theme', label: 'Theme', kind: 'choice', value: 'dark', options: ['dark', 'light'], provider: { plugin: 'engine', tier: 'core' }, isLocked: false },
-  { key: 'status-band.showCost', label: 'Cost', kind: 'boolean', value: true, provider: { plugin: 'status-band', tier: 'user' }, isLocked: false },
-  { key: 'status-band.advisorFlashSeconds', label: 'Advisor note seconds', kind: 'number', value: 12, provider: { plugin: 'status-band', tier: 'user' }, isLocked: false },
-]
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`the Settings section: a chip switches something off, and the choice is kept (${surface})`, async ($, on) => {
+    // a store of the test's own, so what the mod writes can be read back
+    const saved = new Map<string, unknown>()
+    mock.clock(on, { now: 0 })
+    on('store.get', (_, e) => ({ value: saved.get(e.key) }))
+    on('store.set', (_, e) => {
+      saved.set(e.key, e.value)
+      return { value: undefined }
+    })
+    engine(on)
+    await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+    await $.session.measure(measure(21, 37, 42, 1.5))
+    await step($)
 
-// The engine won't run a command from inside a command hook and the test kit has no `$.config`,
-// so the reply logic is called directly with a stand-in for the two calls it makes.
-test('/band settings lists the options and /band set changes one', async () => {
-  const written: unknown[] = []
-  const stub = {
-    config: {
-      list: async () => rows,
-      set: async (a: { key: string; value: unknown }) => {
-        written.push([a.key, a.value])
-        return { value: a.value }
-      },
-    },
-  }
-  const run = (args: string) => {
-    const [sub = '', ...rest] = args.split(/\s+/)
-    return settingsCommand(stub as never, sub as 'settings' | 'set', rest)
-  }
+    let ui = await $.ui.mount({ ...band(), surface })
+    expect(await ui.find({ text: /≈ \$1\.50/ })).toBeDefined()
+    await ui.unmount()
 
-  const listed = await run('settings')
-  expect(listed).toMatch(/showCost: on/)
-  expect(listed).toMatch(/advisorFlashSeconds: 12/)
-  expect(listed).not.toMatch(/theme/)
+    ui = await openSettings($, surface)
+    expect(await ui.find({ text: /^Band$/ })).toBeDefined()
+    expect(await ui.find({ text: /^Live rate$/ })).toBeDefined()
+    expect(await ui.find({ text: /^Warnings$/ })).toBeDefined()
+    await ui.press({ key: 'pref-showCost' })
+    await ui.unmount()
 
-  expect(await run('set showCost off')).toMatch(/showCost is now off/)
-  expect(written).toEqual([['status-band.showCost', false]])
-  expect(await run('set SHOWCOST maybe')).toMatch(/doesn't fit showCost; it takes on or off/)
-  expect(await run('set advisorFlashSeconds 30')).toMatch(/advisorFlashSeconds is now 30/)
-  expect(await run('set advisorFlashSeconds soon')).toMatch(/it takes a number/)
-  expect(await run('set nothing on')).toMatch(/No setting called "nothing"/)
-  expect(await run('set showCost')).toMatch(/Usage: \/band set/)
-  expect(written.length).toBe(2)
+    // it takes effect at once, and it was written to the store
+    ui = await $.ui.mount({ ...band(), surface })
+    expect(await ui.find({ text: /≈/ })).toBeUndefined()
+    expect(await ui.find({ text: /Cache warm/ })).toBeDefined()
+    await ui.unmount()
+    expect(saved.get('prefs')).toEqual({ ...DEFAULT_PREFS, showCost: false })
+  })
+}
+
+test('what was saved is what the next session starts with', async ($, on) => {
+  await start($, on, { showCost: false })
+  await $.session.measure(measure(21, 37, 42, 1.5))
+  await step($)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  expect(await ui.find({ text: /Cache warm/ })).toBeDefined()
+  expect(await ui.find({ text: /≈/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the advisor-note chip steps to the next seconds: the note then outlasts the old 12', async ($, on) => {
+  const clock = await start($, on, { advisorFlashSeconds: 12 }, [advisorUse('srv_1')])
+  await step($)
+  expect(FLASH_STEPS[FLASH_STEPS.indexOf(12) + 1]).toBe(30)
+  let ui = await openSettings($)
+  await ui.press({ key: 'pref-flash' })
+  await ui.unmount()
+
+  await clock.advance(20_000)
+  ui = await $.ui.mount({ ...band(true), surface: 'terminal' })
+  expect(await ui.find({ text: /Advisor consulted/ })).toBeDefined()
+  await ui.unmount()
+  await clock.advance(20_000)
+  ui = await $.ui.mount({ ...band(true), surface: 'terminal' })
+  expect(await ui.find({ text: /Advisor consulted/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('Reset to defaults puts everything back', async ($, on) => {
+  await start($, on, { showCost: false, showContext: false })
+  await $.session.measure(measure(21, 37, 42, 1.5))
+  await step($)
+  let ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  expect(await ui.find({ text: /Context/ })).toBeUndefined()
+  await ui.unmount()
+
+  ui = await openSettings($)
+  await ui.press({ key: 'pref-reset' })
+  await ui.unmount()
+  ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  expect(await ui.find({ text: /Context/ })).toBeDefined()
+  expect(await ui.find({ text: /≈ \$1\.50/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('readPrefs keeps what has the right type and defaults the rest', async () => {
+  expect(readPrefs(undefined)).toEqual(DEFAULT_PREFS)
+  expect(readPrefs('nonsense')).toEqual(DEFAULT_PREFS)
+  expect(readPrefs({ showCost: false, showRate: 'no', advisorFlashSeconds: -3, stray: 1 })).toEqual({ ...DEFAULT_PREFS, showCost: false })
+  expect(readPrefs({ advisorFlashSeconds: 30 }).advisorFlashSeconds).toBe(30)
+})
+
+test('/band set: names are case-blind, values are checked, and nothing changes on a bad one', async () => {
+  const ok = applySet(DEFAULT_PREFS, 'SHOWCOST', 'off')
+  expect(ok.text).toBe('showCost is now off.')
+  expect(ok.next).toEqual({ ...DEFAULT_PREFS, showCost: false })
+  expect(applySet(DEFAULT_PREFS, 'showCost', 'maybe').next).toBeUndefined()
+  expect(applySet(DEFAULT_PREFS, 'showCost', 'maybe').text).toMatch(/takes on or off/)
+  expect(applySet(DEFAULT_PREFS, 'advisorFlashSeconds', '30').next?.advisorFlashSeconds).toBe(30)
+  expect(applySet(DEFAULT_PREFS, 'advisorFlashSeconds', '-1').next).toBeUndefined()
+  expect(applySet(DEFAULT_PREFS, 'advisorFlashSeconds', 'soon').text).toMatch(/number of seconds/)
+  expect(applySet(DEFAULT_PREFS, 'nothing', 'on').text).toMatch(/No setting called "nothing"/)
+  expect(listPrefs(DEFAULT_PREFS)).toMatch(/showCost: on/)
+  expect(listPrefs(DEFAULT_PREFS)).toMatch(/advisorFlashSeconds: 12/)
 })

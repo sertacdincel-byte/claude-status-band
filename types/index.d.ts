@@ -58,6 +58,25 @@ export type Ctx ={ tokens?: number; window: number; percent?: number }
 export type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 export type Limits = { context: Ctx | null; rateLimits: Limit[]; usd: number | null }
 
+/** What the band shows; saved in the mod's own store, edited from the Settings section of the details. */
+export type Prefs = {
+  showContext: boolean
+  show5h: boolean
+  showWeek: boolean
+  showAdvisor: boolean
+  showCache: boolean
+  showCost: boolean
+  /** Live new-token rate while Claude works; off shows the cache countdown instead. */
+  showRate: boolean
+  showAlerts: boolean
+  detailsNow: boolean
+  detailsLimits: boolean
+  detailsCache: boolean
+  detailsSession: boolean
+  /** Seconds the band says "Advisor consulted" after a call; 0 turns the note off. */
+  advisorFlashSeconds: number
+}
+
 /** A rate-limit reading, kept to estimate when a window runs out. */
 export type Sample = { t: number; p: number }
 
@@ -75,6 +94,8 @@ declare module 'claude-code' {
       ttl: Ttl
       history: Record<string, Sample[]>
       advisor: Advisor
+      prefs: Prefs
+      settingsOpen: boolean
     }
   }
 }

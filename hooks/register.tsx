@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { ConfigKind, ConfigValue, EngineInterface, Register, TurnStepServerToolUse, TurnUsage } from 'claude-code'
+import type { EngineInterface, Register, TurnStepServerToolUse, TurnUsage } from 'claude-code'
 
-import type { Advisor, Ctx, Limit, Limits, Sample, Step, Totals, Ttl, Turn, Warm } from '../types'
+import type { Advisor, Ctx, Limit, Limits, Prefs, Sample, Step, Totals, Ttl, Turn, Warm } from '../types'
 
 const P = 'status-band'
 const COMMAND = 'band'
@@ -11,8 +11,7 @@ const TTL_MS: Record<Ttl, number> = { '5m': 5 * MIN, '1h': 60 * MIN }
 // A cache write over a cache read: 1h writes bill 2x base input, 5m 1.25x, reads 0.1x.
 const WRITE_WEIGHT: Record<Ttl, number> = { '5m': 1.25, '1h': 2 }
 const KEEP = 15 * MIN
-// How long (seconds) the band says "Advisor consulted" after a call reaches it, unless the option says otherwise; and how many calls it remembers.
-const ADVISOR_FLASH_SECONDS = 12
+// How many advisor calls it remembers.
 const ADVISOR_KEEP = 50
 const ADVISOR_SPAN = 60 * MIN
 
@@ -22,6 +21,22 @@ type Level = 'ok' | 'warn' | 'bad'
 const ZERO: Totals = { sent: 0, wrote: 0, reread: 0 }
 const NO_LIMITS: Limits = { context: null, rateLimits: [], usd: null }
 const NO_ADVISOR: Advisor = { calls: [], count: 0, firstAt: null }
+
+export const DEFAULT_PREFS: Prefs = {
+  showContext: true,
+  show5h: true,
+  showWeek: true,
+  showAdvisor: true,
+  showCache: true,
+  showCost: true,
+  showRate: true,
+  showAlerts: true,
+  detailsNow: true,
+  detailsLimits: true,
+  detailsCache: true,
+  detailsSession: true,
+  advisorFlashSeconds: 12,
+}
 
 const open = atom({ plugin: 'status-band', key: 'open' } as const, false)
 const hidden = atom({ plugin: 'status-band', key: 'hidden' } as const, false)
@@ -34,6 +49,8 @@ const warm = atom({ plugin: 'status-band', key: 'warm' } as const, null)
 const ttlAtom = atom({ plugin: 'status-band', key: 'ttl' } as const, '1h')
 const history = atom({ plugin: 'status-band', key: 'history' } as const, {})
 const advisor = atom({ plugin: 'status-band', key: 'advisor' } as const, NO_ADVISOR)
+const prefs = atom({ plugin: 'status-band', key: 'prefs' } as const, DEFAULT_PREFS)
+const settingsOpen = atom({ plugin: 'status-band', key: 'settingsOpen' } as const, false)
 
 // ---------- arithmetic ----------
 
@@ -269,74 +286,90 @@ async function resetAll($: EngineInterface) {
 
 // ---------- settings ----------
 
-const FIELD_PREFIX = 'status-band.'
 const ON_WORDS = ['on', 'true', 'yes', '1', 'show']
 const OFF_WORDS = ['off', 'false', 'no', '0', 'hide']
 
-const fmtValue = (v: ConfigValue): string => (typeof v === 'boolean' ? (v ? 'on' : 'off') : String(v))
+/** The switches of the Settings section, in the order and under the headings it draws them. */
+export const SWITCHES = {
+  band: [
+    ['showContext', 'Context'],
+    ['show5h', '5h'],
+    ['showWeek', 'Week'],
+    ['showAdvisor', 'Advisor'],
+    ['showCache', 'Cache'],
+    ['showCost', 'Cost'],
+    ['showRate', 'Live rate'],
+    ['showAlerts', 'Warnings'],
+  ],
+  details: [
+    ['detailsNow', 'Right now'],
+    ['detailsLimits', 'Limits'],
+    ['detailsCache', 'Cache'],
+    ['detailsSession', 'This session'],
+  ],
+} as const
+type SwitchKey = (typeof SWITCHES)['band' | 'details'][number][0]
 
-/** What a `/band set` argument means for a row of this kind; undefined when it doesn't fit. */
-export const parseValue = (kind: ConfigKind, text: string, choices?: readonly string[]): ConfigValue | undefined => {
-  const x = text.trim().toLowerCase()
-  if (kind === 'boolean') return ON_WORDS.includes(x) ? true : OFF_WORDS.includes(x) ? false : undefined
-  if (kind === 'number') return x !== '' && Number.isFinite(Number(x)) ? Number(x) : undefined
-  if (kind === 'choice') return choices?.find(c => c.toLowerCase() === x)
-  return text.trim()
+/** The seconds the advisor note cycles through when its chip is pressed. */
+export const FLASH_STEPS = [0, 5, 12, 30, 60]
+
+/** What the store held, kept only where it has the right type; the rest takes the default. */
+export const readPrefs = (raw: unknown): Prefs => {
+  const from = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
+  const out: Record<string, boolean | number> = { ...DEFAULT_PREFS }
+  for (const [k, d] of Object.entries(DEFAULT_PREFS)) {
+    const v = from[k]
+    if (typeof d === 'boolean' && typeof v === 'boolean') out[k] = v
+    if (typeof d === 'number' && typeof v === 'number' && Number.isFinite(v) && v >= 0) out[k] = v
+  }
+  return out as Prefs
 }
 
-/** `/band settings` lists this mod's options; `/band set <option> <value>` changes one. Returns the reply text. */
-export async function settingsCommand($: EngineInterface, sub: 'settings' | 'set', rest: string[]): Promise<string> {
-  const rows = (await $.config.list()).filter(r => r.key.startsWith(FIELD_PREFIX))
-  const nameOf = (key: string) => key.slice(FIELD_PREFIX.length)
-  if (sub === 'settings') {
-    const lines = rows.map(r => `  ${nameOf(r.key)}: ${fmtValue(r.value)}  (${r.label})`)
-    return [`Status band settings. Change one with /${COMMAND} set <option> <value>`, ...lines].join('\n')
-  }
-  const [name = '', ...words] = rest
-  const valueText = words.join(' ')
-  if (name === '' || valueText === '') return `Usage: /${COMMAND} set <option> <value>. List the options with /${COMMAND} settings`
-  const row = rows.find(r => nameOf(r.key).toLowerCase() === name.toLowerCase())
-  if (!row) return `No setting called "${name}". List them with /${COMMAND} settings`
-  const value = parseValue(row.kind, valueText, row.options)
-  if (value === undefined) {
-    const fits = row.kind === 'boolean' ? 'on or off' : row.kind === 'number' ? 'a number' : (row.options ?? []).join(', ')
-    return `"${valueText}" doesn't fit ${nameOf(row.key)}; it takes ${fits}.`
-  }
-  const result = await $.config.set({ key: row.key, value })
-  const denied = (result as { deny?: string }).deny
-  return denied ? `Not changed: ${denied}` : `${nameOf(row.key)} is now ${fmtValue(value)}.`
+const fmtPref = (v: boolean | number): string => (typeof v === 'boolean' ? (v ? 'on' : 'off') : String(v))
+
+/** `/band set <option> <value>` applied to `current`: the new prefs when it fits, and the reply. */
+export const applySet = (current: Prefs, name: string, valueText: string): { next?: Prefs; text: string } => {
+  const key = (Object.keys(DEFAULT_PREFS) as (keyof Prefs)[]).find(k => k.toLowerCase() === name.toLowerCase())
+  if (!key) return { text: `No setting called "${name}". List them with /${COMMAND} set` }
+  const x = valueText.trim().toLowerCase()
+  const isSwitch = typeof DEFAULT_PREFS[key] === 'boolean'
+  const value = isSwitch
+    ? ON_WORDS.includes(x)
+      ? true
+      : OFF_WORDS.includes(x)
+        ? false
+        : undefined
+    : x !== '' && Number.isFinite(Number(x)) && Number(x) >= 0
+      ? Number(x)
+      : undefined
+  if (value === undefined)
+    return { text: `"${valueText}" doesn't fit ${key}; it takes ${isSwitch ? 'on or off' : 'a number of seconds, 0 or more'}.` }
+  return { next: { ...current, [key]: value }, text: `${key} is now ${fmtPref(value)}.` }
+}
+
+export const listPrefs = (p: Prefs): string =>
+  [
+    `Status band settings. Change one with /${COMMAND} set <option> <value>, or click them under ⚙ Settings in /${COMMAND}.`,
+    ...Object.entries(p).map(([k, v]) => `  ${k}: ${fmtPref(v as boolean | number)}`),
+  ].join('\n')
+
+/** Kept in the mod's own store, so it holds across sessions, and mirrored to the atom the band draws from. */
+async function savePrefs($: EngineInterface, next: Prefs) {
+  await update($, prefs, () => next)
+  await $.store.set('prefs', next)
 }
 
 // ---------- the band ----------
 
-export const register: Register = (on, options) => {
-  // Every field is on unless its option says off; the module reloads when one changes.
-  const o = options ?? {}
-  const flag = (k: string): boolean => o[k] !== false
-  const opt = {
-    context: flag('showContext'),
-    fiveHour: flag('show5h'),
-    week: flag('showWeek'),
-    advisor: flag('showAdvisor'),
-    cache: flag('showCache'),
-    cost: flag('showCost'),
-    rate: flag('showRate'),
-    alerts: flag('showAlerts'),
-    detNow: flag('detailsNow'),
-    detLimits: flag('detailsLimits'),
-    detCache: flag('detailsCache'),
-    detSession: flag('detailsSession'),
-  }
-  const flashRaw = Number(o.advisorFlashSeconds)
-  // 0 turns the "Advisor consulted" note off; anything unusable falls back to the default.
-  const flashMs = (Number.isFinite(flashRaw) && flashRaw >= 0 ? flashRaw : ADVISOR_FLASH_SECONDS) * SEC
-
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: 'Status band: open or close details; settings, set, hide, show',
-      argumentHint: 'settings | set <option> <value> | hide | show',
+      description: 'Status band: open or close details; settings, set, reset, hide, show',
+      argumentHint: 'settings | set <option> <value> | reset | hide | show',
     })
+    const stored = readPrefs(await $.store.get('prefs'))
+    await update($, prefs, () => stored)
     await update($, now, () => 0)
     $.clock.every(SEC, async () => {
       if (await read($, hidden)) return
@@ -408,7 +441,25 @@ export const register: Register = (on, options) => {
   on('command.run', { command: COMMAND }, async ($, e) => {
     const [sub = '', ...rest] = e.args.trim().split(/\s+/)
     const arg = sub.toLowerCase()
-    if (arg === 'settings' || arg === 'set') return { text: await settingsCommand($, arg, rest) }
+    if (arg === 'settings') {
+      // Settings live inside the details: open both, or close the settings alone when they're already showing.
+      const showing = (await read($, open)) && (await read($, settingsOpen))
+      await update($, open, () => !showing)
+      await update($, settingsOpen, () => !showing)
+      return { text: showing ? 'Settings closed.' : 'Settings open. Click an item to switch it on or off.' }
+    }
+    if (arg === 'set') {
+      const [name = '', ...words] = rest
+      const current = await read($, prefs)
+      if (name === '' || words.length === 0) return { text: listPrefs(current) }
+      const { next, text } = applySet(current, name, words.join(' '))
+      if (next) await savePrefs($, next)
+      return { text }
+    }
+    if (arg === 'reset') {
+      await savePrefs($, DEFAULT_PREFS)
+      return { text: 'Settings back to the defaults.' }
+    }
     if (arg === 'hide') {
       await update($, hidden, () => true)
       return { text: `Status band hidden. Bring it back with /${COMMAND} show` }
@@ -443,7 +494,26 @@ export const register: Register = (on, options) => {
     const hist = await read($, history)
     const adv = await read($, advisor)
     const isOpen = await read($, open)
+    const p = await read($, prefs)
+    const setOpen = await read($, settingsOpen)
     const working = e.props.isWorking
+
+    const opt = {
+      context: p.showContext,
+      fiveHour: p.show5h,
+      week: p.showWeek,
+      advisor: p.showAdvisor,
+      cache: p.showCache,
+      cost: p.showCost,
+      rate: p.showRate,
+      alerts: p.showAlerts,
+      detNow: p.detailsNow,
+      detLimits: p.detailsLimits,
+      detCache: p.detailsCache,
+      detSession: p.detailsSession,
+    }
+    // 0 turns the "Advisor consulted" note off.
+    const flashMs = p.advisorFlashSeconds * SEC
 
     const five = findLimit(l, 'five_hour')
     const week = findLimit(l, 'seven_day')
@@ -829,14 +899,65 @@ export const register: Register = (on, options) => {
       )
     }
 
-    // Every section switched off: no empty box.
-    if (rows.length === 0) {
-      if (band === null) return below
-      return (
-        <Box flexDirection="column">
-          {below}
-          {band}
+    // ---------- settings ----------
+
+    // The details always end with the Settings button, so the box is never empty and the way back is always there.
+    rows.push(
+      <Box key="r-settings" marginTop={1}>
+        <Button
+          key="sb-settings"
+          label={setOpen ? '⚙ Settings ▴' : '⚙ Settings ▾'}
+          plain
+          dimColor
+          onPress={() => update($, settingsOpen, v => !v)}
+        />
+      </Box>,
+    )
+    if (setOpen) {
+      const toggle = async (k: SwitchKey) => {
+        const cur = await read($, prefs)
+        await savePrefs($, { ...cur, [k]: !cur[k] })
+      }
+      const chip = (k: SwitchKey, label: string) => (
+        <Button key={`pref-${k}`} plain onPress={() => toggle(k)}>
+          <Text color={p[k] ? C.ok : undefined} dimColor={!p[k]}>
+            {p[k] ? '● ' : '○ '}
+          </Text>
+          <Text dimColor={!p[k]}>{label}</Text>
+        </Button>
+      )
+      const chips = (key: string, list: readonly (readonly [SwitchKey, string])[]) => (
+        <Box key={key} flexDirection="row" flexWrap="wrap" columnGap={2}>
+          {list.map(([k, label]) => chip(k, label))}
         </Box>
+      )
+      const flash = p.advisorFlashSeconds
+      const cycleFlash = async () => {
+        const cur = await read($, prefs)
+        const i = FLASH_STEPS.indexOf(cur.advisorFlashSeconds)
+        await savePrefs($, { ...cur, advisorFlashSeconds: FLASH_STEPS[(i + 1) % FLASH_STEPS.length] ?? 0 })
+      }
+      rows.push(
+        <Text key="set-band-h" dimColor>
+          Band
+        </Text>,
+        chips('set-band', SWITCHES.band),
+        <Box key="set-details-h" marginTop={1}>
+          <Text dimColor>Details</Text>
+        </Box>,
+        chips('set-details', SWITCHES.details),
+        <Box key="set-flash-h" marginTop={1}>
+          <Text dimColor>Advisor note</Text>
+        </Box>,
+        <Box key="set-flash" flexDirection="row" columnGap={2}>
+          <Button key="pref-flash" plain onPress={cycleFlash}>
+            <Text color={flash > 0 ? C.ok : undefined} dimColor={flash === 0}>
+              {flash > 0 ? '● ' : '○ '}
+            </Text>
+            <Text dimColor={flash === 0}>{flash > 0 ? `${flash}s ▸` : 'off ▸'}</Text>
+          </Button>
+          <Button key="pref-reset" label="Reset to defaults" plain dimColor onPress={() => savePrefs($, DEFAULT_PREFS)} />
+        </Box>,
       )
     }
 

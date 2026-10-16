@@ -28,9 +28,9 @@ Opened with `/band`:
 
 ## Settings
 
-Everything on the band can be switched on or off; all options are on by default.
+Everything on the band can be switched on or off; all of it is on by default.
 
-| Option | What it controls |
+| Setting | What it controls |
 | --- | --- |
 | `showContext` | Context gauge |
 | `show5h` | 5-hour limit gauge |
@@ -46,29 +46,18 @@ Everything on the band can be switched on or off; all options are on by default.
 | `detailsSession` | Details section "This session" |
 | `advisorFlashSeconds` | Seconds the band says "Advisor consulted" after a call (default 12, `0` turns the note off) |
 
-Change them in any of three ways. A change reloads the mod.
+**Click them.** Open the details (`/band`, or the `▾` button) and press **⚙ Settings**. Every switch is a chip: `●` is on, `○` is off. Click one and it takes effect at once; the advisor-note chip steps through 0 (off), 5, 12, 30 and 60 seconds, and **Reset to defaults** puts everything back. `/band settings` opens the details with the settings showing.
 
-- **In a session, with `/band`** (works in the desktop app too):
+**Or type them**, in any session (this works in the desktop app too):
 
-  ```
-  /band settings
-  /band set showCost off
-  /band set advisorFlashSeconds 30
-  ```
+```
+/band set                       list every setting and its value
+/band set showCost off
+/band set advisorFlashSeconds 30
+/band reset                     back to the defaults
+```
 
-  Values are `on` / `off` for switches and a number for `advisorFlashSeconds`.
-- **In `/config`**, where each option is a row (terminal sessions).
-- **In `settings.json`**, under `pluginConfigs`:
-
-  ```json
-  {
-    "pluginConfigs": {
-      "status-band": { "options": { "showCost": false, "showRate": false } }
-    }
-  }
-  ```
-
-  The key is the plugin's name. If a marketplace install doesn't pick it up, use `/band set` instead.
+Values are `on` / `off` for switches and a number of seconds for `advisorFlashSeconds`. Your choices are saved in the mod's own store, so they are still there in the next session.
 
 If every item on the band is off, the band draws no row at all; `/band` still opens the details, and `/band hide` hides everything.
 
