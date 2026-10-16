@@ -16,6 +16,10 @@ Opened with `/band`:
 
 ![The opened details panel with cache, session and advisor sections](docs/details.svg)
 
+Choose what shows by clicking the chips under **⚙ Settings** (here Cost is switched off, so the band shows no dollar figure):
+
+![The Settings section: a chip for every switch, with Cost switched off](docs/settings.svg)
+
 *These are illustrations of the band, drawn with sample numbers, not screenshots.*
 
 ## What it shows
@@ -23,7 +27,7 @@ Opened with `/band`:
 - **Gauges:** context window, 5-hour limit and weekly limit, colored green / amber / red.
 - **Right side, one thing at a time:** a warning when something needs attention, otherwise the advisor note, the live new-token rate while Claude works, or the prompt-cache countdown and session cost.
 - **Advisor (`✦ Advisor N`):** shows once the advisor has been consulted. For a few seconds after a call it reads `✦ Advisor consulted · #3 · 6s`.
-- **Details:** `/band` (or the `▾` button) opens limits, cache, session token totals and an Advisor section with call count, time spent, a 60-minute trail and the last calls.
+- **Details:** `/band` (or the `▾` button) opens limits, cache, session token totals and an Advisor section with call count, time spent, a 60-minute trail and the last calls. At the bottom, **⚙ Settings** opens a chip for every switch; see [Settings](#settings).
 - `/band hide` and `/band show` turn the band off and on.
 
 ## Settings

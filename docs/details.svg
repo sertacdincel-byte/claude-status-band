@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="438" viewBox="0 0 900 438" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="472" viewBox="0 0 900 472" role="img" aria-labelledby="t d">
   <title id="t">status-band details panel</title>
   <desc id="d">The opened band with cache, session and advisor sections.</desc>
   <style>
@@ -10,13 +10,13 @@
     .b { font-weight: bold; }
     .r { text-anchor: end; fill: #8b8b8b; }
   </style>
-  <rect width="900" height="438" rx="12" fill="#121212"/>
+  <rect width="900" height="472" rx="12" fill="#121212"/>
 
   <rect x="12" y="12" width="876" height="40" rx="8" fill="#1e1e1e" stroke="#333333"/>
   <text x="28" y="37"><tspan class="ok">● </tspan><tspan class="dim">Context </tspan><tspan class="b">12%</tspan><tspan class="dim"> │ </tspan><tspan class="ok">● </tspan><tspan class="dim">5h </tspan><tspan class="b">4%</tspan><tspan class="dim"> │ </tspan><tspan class="ok">● </tspan><tspan class="dim">Week </tspan><tspan class="b">1%</tspan><tspan class="dim"> │ </tspan><tspan class="pro">✦ </tspan><tspan class="dim">Advisor </tspan><tspan class="b">3</tspan></text>
   <text x="872" y="37" text-anchor="end"><tspan class="ok">◆ </tspan><tspan class="dim">Cache warm </tspan><tspan class="b">57:57</tspan><tspan class="dim">  ·  ≈ $0.46  ▴</tspan></text>
 
-  <rect x="12" y="62" width="876" height="364" rx="10" fill="none" stroke="#3a3a3a"/>
+  <rect x="12" y="62" width="876" height="398" rx="10" fill="none" stroke="#3a3a3a"/>
 
   <text class="dim b" x="28" y="90">Cache</text>
   <text x="28" y="112">Status</text><text x="200" y="112"><tspan class="ok b">Warm</tspan><tspan class="dim"> · 61k kept · 94% hit</tspan></text><text class="r" x="872" y="112">TTL 1h</text>
@@ -34,4 +34,6 @@
   <text x="28" y="348">#2</text><text class="dim" x="200" y="348">14m ago · ran 8s</text>
   <text x="28" y="370">#1</text><text class="dim" x="200" y="370">29m ago · ran 7s</text>
   <text class="dim" x="28" y="402">The advisor's cost is in the ≈ $ total; its tokens aren't broken out.</text>
+
+  <text class="dim" x="28" y="440">⚙ Settings ▾</text>
 </svg>

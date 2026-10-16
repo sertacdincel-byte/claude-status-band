@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="322" viewBox="0 0 900 322" role="img" aria-labelledby="t d">
+  <title id="t">status-band settings</title>
+  <desc id="d">The Settings section of the details: a chip for every switch, with Cost switched off and the band showing no dollar figure.</desc>
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 15px; fill: #e8e8e8; white-space: pre; }
+    .cap { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: #8b8b8b; }
+    .dim { fill: #8b8b8b; }
+    .off { fill: #6f6f6f; }
+    .ok { fill: #30a46c; }
+    .pro { fill: #b18ce8; }
+    .b { font-weight: bold; }
+  </style>
+  <rect width="900" height="322" rx="12" fill="#121212"/>
+
+  <rect x="12" y="12" width="876" height="40" rx="8" fill="#1e1e1e" stroke="#333333"/>
+  <text x="28" y="37"><tspan class="ok">● </tspan><tspan class="dim">Context </tspan><tspan class="b">12%</tspan><tspan class="dim"> │ </tspan><tspan class="ok">● </tspan><tspan class="dim">5h </tspan><tspan class="b">4%</tspan><tspan class="dim"> │ </tspan><tspan class="ok">● </tspan><tspan class="dim">Week </tspan><tspan class="b">1%</tspan><tspan class="dim"> │ </tspan><tspan class="pro">✦ </tspan><tspan class="dim">Advisor </tspan><tspan class="b">3</tspan></text>
+  <text x="872" y="37" text-anchor="end"><tspan class="ok">◆ </tspan><tspan class="dim">Cache warm </tspan><tspan class="b">57:57</tspan><tspan class="dim">  ▴</tspan></text>
+
+  <rect x="12" y="62" width="876" height="214" rx="10" fill="none" stroke="#3a3a3a"/>
+
+  <text class="dim" x="28" y="90">⚙ Settings ▴</text>
+
+  <text class="dim" x="28" y="120">Band</text>
+  <text x="28" y="144"><tspan class="ok">● </tspan><tspan>Context</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>5h</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>Week</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>Advisor</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>Cache</tspan><tspan>   </tspan><tspan class="off">○ Cost</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>Live rate</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>Warnings</tspan></text>
+
+  <text class="dim" x="28" y="174">Details</text>
+  <text x="28" y="198"><tspan class="ok">● </tspan><tspan>Right now</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>Limits</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>Cache</tspan><tspan>   </tspan><tspan class="ok">● </tspan><tspan>This session</tspan></text>
+
+  <text class="dim" x="28" y="228">Advisor note</text>
+  <text x="28" y="252"><tspan class="ok">● </tspan><tspan>12s ▸</tspan><tspan>      </tspan><tspan class="dim">Reset to defaults</tspan></text>
+
+  <text class="cap" x="20" y="302">Click a chip to switch it. Cost is off here, so the band shows no ≈ $ figure.</text>
+</svg>
