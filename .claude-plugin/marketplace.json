@@ -1,0 +1,6 @@
+{
+  "name": "claude-status-band",
+  "description": "A Claude Code status band above the prompt: limits, cache countdown and advisor calls.",
+  "owner": { "name": "sertacdincel-byte" },
+  "plugins": [{ "name": "status-band", "source": "./" }]
+}

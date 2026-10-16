@@ -1,0 +1,7 @@
+{
+  "name": "status-band",
+  "version": "0.2.0",
+  "description": "One plain line above the prompt: context, 5h and weekly limits, live new-token rate, cache countdown and advisor calls; open it for details.",
+  "author": { "name": "sertacdincel-byte" },
+  "types": "./types/index.d.ts"
+}
