@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="438" viewBox="0 0 900 438" role="img" aria-labelledby="t d">
+  <title id="t">status-band details panel</title>
+  <desc id="d">The opened band with cache, session and advisor sections.</desc>
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 15px; fill: #e8e8e8; white-space: pre; }
+    .cap { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: #8b8b8b; }
+    .dim { fill: #8b8b8b; }
+    .ok { fill: #30a46c; }
+    .pro { fill: #b18ce8; }
+    .b { font-weight: bold; }
+    .r { text-anchor: end; fill: #8b8b8b; }
+  </style>
+  <rect width="900" height="438" rx="12" fill="#121212"/>
+
+  <rect x="12" y="12" width="876" height="40" rx="8" fill="#1e1e1e" stroke="#333333"/>
+  <text x="28" y="37"><tspan class="ok">● </tspan><tspan class="dim">Context </tspan><tspan class="b">12%</tspan><tspan class="dim"> │ </tspan><tspan class="ok">● </tspan><tspan class="dim">5h </tspan><tspan class="b">4%</tspan><tspan class="dim"> │ </tspan><tspan class="ok">● </tspan><tspan class="dim">Week </tspan><tspan class="b">1%</tspan><tspan class="dim"> │ </tspan><tspan class="pro">✦ </tspan><tspan class="dim">Advisor </tspan><tspan class="b">3</tspan></text>
+  <text x="872" y="37" text-anchor="end"><tspan class="ok">◆ </tspan><tspan class="dim">Cache warm </tspan><tspan class="b">57:57</tspan><tspan class="dim">  ·  ≈ $0.46  ▴</tspan></text>
+
+  <rect x="12" y="62" width="876" height="364" rx="10" fill="none" stroke="#3a3a3a"/>
+
+  <text class="dim b" x="28" y="90">Cache</text>
+  <text x="28" y="112">Status</text><text x="200" y="112"><tspan class="ok b">Warm</tspan><tspan class="dim"> · 61k kept · 94% hit</tspan></text><text class="r" x="872" y="112">TTL 1h</text>
+
+  <text class="dim b" x="28" y="142">This session</text>
+  <text x="28" y="164">New tokens</text><text x="200" y="164"><tspan class="b">38k</tspan><tspan class="dim"> you sent + </tspan><tspan class="b">9.1k</tspan><tspan class="dim"> Claude wrote</tspan></text><text class="r" x="872" y="164">real work</text>
+  <text x="28" y="186">Re-reads</text><text class="dim" x="200" y="186">180k · conversation re-sent each step</text><text class="r" x="872" y="186">cheap, from cache</text>
+  <text x="28" y="208">Cost</text><text x="200" y="208"><tspan class="dim">≈ </tspan><tspan class="b">$0.46</tspan><tspan class="dim"> total</tspan></text>
+
+  <text class="dim b" x="28" y="238">Advisor</text>
+  <text x="28" y="260">Calls</text><text x="200" y="260"><tspan class="pro b">3</tspan><tspan class="dim"> this session · last 2m ago</tspan></text><text class="r" x="872" y="260">avg 7s</text>
+  <text x="28" y="282">Time waiting</text><text x="200" y="282"><tspan class="b">21s</tspan><tspan class="dim"> total in the advisor</tspan></text><text class="r" x="872" y="282">≈ 1% of session</text>
+  <text x="28" y="304">Last 60 min</text><text x="200" y="304"><tspan class="dim">▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁</tspan><tspan class="pro">✦</tspan><tspan class="dim">▁▁▁▁▁▁</tspan><tspan class="pro">✦</tspan><tspan class="dim">▁▁▁▁▁</tspan><tspan class="pro">✦</tspan><tspan class="dim">▁</tspan></text><text class="r" x="872" y="304">first 29m ago</text>
+  <text x="28" y="326">#3</text><text class="dim" x="200" y="326">2m ago · ran 6s</text><text class="r" x="872" y="326">Ctrl+O to read</text>
+  <text x="28" y="348">#2</text><text class="dim" x="200" y="348">14m ago · ran 8s</text>
+  <text x="28" y="370">#1</text><text class="dim" x="200" y="370">29m ago · ran 7s</text>
+  <text class="dim" x="28" y="402">The advisor's cost is in the ≈ $ total; its tokens aren't broken out.</text>
+</svg>

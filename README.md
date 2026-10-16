@@ -6,6 +6,20 @@ A Claude Code mod that puts one plain status line above the prompt:
 ● Context 12% │ ● 5h 4% │ ● Week 1% │ ✦ Advisor 3        ◆ Cache warm 57:57 · ≈ $0.46  ▾
 ```
 
+## Preview
+
+The band, idle and right after an advisor call:
+
+![The status band above the prompt, idle and right after an advisor call](docs/band.svg)
+
+Opened with `/band`:
+
+![The opened details panel with cache, session and advisor sections](docs/details.svg)
+
+*These are illustrations of the band, drawn with sample numbers, not screenshots.*
+
+## What it shows
+
 - **Gauges:** context window, 5-hour limit and weekly limit, colored green / amber / red.
 - **Right side, one thing at a time:** a warning when something needs attention, otherwise the advisor note, the live new-token rate while Claude works, or the prompt-cache countdown and session cost.
 - **Advisor (`✦ Advisor N`):** shows once the advisor has been consulted. For a few seconds after a call it reads `✦ Advisor consulted · #3 · 6s`.
