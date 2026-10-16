@@ -1,7 +1,22 @@
 {
   "name": "status-band",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "One plain line above the prompt: context, 5h and weekly limits, live new-token rate, cache countdown and advisor calls; open it for details.",
   "author": { "name": "sertacdincel-byte" },
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showContext": { "type": "boolean", "title": "Context gauge", "description": "Show the context window gauge on the band.", "default": true },
+    "show5h": { "type": "boolean", "title": "5-hour limit gauge", "description": "Show the 5-hour limit gauge on the band.", "default": true },
+    "showWeek": { "type": "boolean", "title": "Weekly limit gauge", "description": "Show the weekly limit gauge on the band.", "default": true },
+    "showAdvisor": { "type": "boolean", "title": "Advisor", "description": "Show the advisor count, the 'Advisor consulted' note and the Advisor section in the details.", "default": true },
+    "showCache": { "type": "boolean", "title": "Cache countdown", "description": "Show the prompt-cache countdown on the right of the band.", "default": true },
+    "showCost": { "type": "boolean", "title": "Cost", "description": "Show the session cost (≈ $) on the band and in the details.", "default": true },
+    "showRate": { "type": "boolean", "title": "Live token rate", "description": "While Claude works, show the new-token rate on the right. Off shows the cache countdown instead.", "default": true },
+    "showAlerts": { "type": "boolean", "title": "Warnings", "description": "Let the band warn about a full context, a limit running out or a cache about to expire.", "default": true },
+    "detailsNow": { "type": "boolean", "title": "Details: right now", "description": "Show the Right now section (live rate, last 15 minutes, this turn) when the details are open.", "default": true },
+    "detailsLimits": { "type": "boolean", "title": "Details: limits", "description": "Show the Limits section when the details are open.", "default": true },
+    "detailsCache": { "type": "boolean", "title": "Details: cache", "description": "Show the Cache section when the details are open.", "default": true },
+    "detailsSession": { "type": "boolean", "title": "Details: this session", "description": "Show the This session section (tokens, re-reads, cost) when the details are open.", "default": true },
+    "advisorFlashSeconds": { "type": "number", "title": "Advisor note seconds", "description": "How long the band says 'Advisor consulted' after a call. 0 turns the note off.", "default": 12 }
+  }
 }

@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, TurnStepServerToolUse, TurnUsage } from 'claude-code'
+import type { ConfigKind, ConfigValue, EngineInterface, Register, TurnStepServerToolUse, TurnUsage } from 'claude-code'
 
 import type { Advisor, Ctx, Limit, Limits, Sample, Step, Totals, Ttl, Turn, Warm } from '../types'
 
@@ -11,8 +11,8 @@ const TTL_MS: Record<Ttl, number> = { '5m': 5 * MIN, '1h': 60 * MIN }
 // A cache write over a cache read: 1h writes bill 2x base input, 5m 1.25x, reads 0.1x.
 const WRITE_WEIGHT: Record<Ttl, number> = { '5m': 1.25, '1h': 2 }
 const KEEP = 15 * MIN
-// How long the band says "Advisor consulted" after a call reaches it, and how many calls it remembers.
-const ADVISOR_FLASH = 12 * SEC
+// How long (seconds) the band says "Advisor consulted" after a call reaches it, unless the option says otherwise; and how many calls it remembers.
+const ADVISOR_FLASH_SECONDS = 12
 const ADVISOR_KEEP = 50
 const ADVISOR_SPAN = 60 * MIN
 
@@ -267,11 +267,76 @@ async function resetAll($: EngineInterface) {
   await update($, advisor, () => NO_ADVISOR)
 }
 
+// ---------- settings ----------
+
+const FIELD_PREFIX = 'status-band.'
+const ON_WORDS = ['on', 'true', 'yes', '1', 'show']
+const OFF_WORDS = ['off', 'false', 'no', '0', 'hide']
+
+const fmtValue = (v: ConfigValue): string => (typeof v === 'boolean' ? (v ? 'on' : 'off') : String(v))
+
+/** What a `/band set` argument means for a row of this kind; undefined when it doesn't fit. */
+export const parseValue = (kind: ConfigKind, text: string, choices?: readonly string[]): ConfigValue | undefined => {
+  const x = text.trim().toLowerCase()
+  if (kind === 'boolean') return ON_WORDS.includes(x) ? true : OFF_WORDS.includes(x) ? false : undefined
+  if (kind === 'number') return x !== '' && Number.isFinite(Number(x)) ? Number(x) : undefined
+  if (kind === 'choice') return choices?.find(c => c.toLowerCase() === x)
+  return text.trim()
+}
+
+/** `/band settings` lists this mod's options; `/band set <option> <value>` changes one. Returns the reply text. */
+export async function settingsCommand($: EngineInterface, sub: 'settings' | 'set', rest: string[]): Promise<string> {
+  const rows = (await $.config.list()).filter(r => r.key.startsWith(FIELD_PREFIX))
+  const nameOf = (key: string) => key.slice(FIELD_PREFIX.length)
+  if (sub === 'settings') {
+    const lines = rows.map(r => `  ${nameOf(r.key)}: ${fmtValue(r.value)}  (${r.label})`)
+    return [`Status band settings. Change one with /${COMMAND} set <option> <value>`, ...lines].join('\n')
+  }
+  const [name = '', ...words] = rest
+  const valueText = words.join(' ')
+  if (name === '' || valueText === '') return `Usage: /${COMMAND} set <option> <value>. List the options with /${COMMAND} settings`
+  const row = rows.find(r => nameOf(r.key).toLowerCase() === name.toLowerCase())
+  if (!row) return `No setting called "${name}". List them with /${COMMAND} settings`
+  const value = parseValue(row.kind, valueText, row.options)
+  if (value === undefined) {
+    const fits = row.kind === 'boolean' ? 'on or off' : row.kind === 'number' ? 'a number' : (row.options ?? []).join(', ')
+    return `"${valueText}" doesn't fit ${nameOf(row.key)}; it takes ${fits}.`
+  }
+  const result = await $.config.set({ key: row.key, value })
+  const denied = (result as { deny?: string }).deny
+  return denied ? `Not changed: ${denied}` : `${nameOf(row.key)} is now ${fmtValue(value)}.`
+}
+
 // ---------- the band ----------
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  // Every field is on unless its option says off; the module reloads when one changes.
+  const o = options ?? {}
+  const flag = (k: string): boolean => o[k] !== false
+  const opt = {
+    context: flag('showContext'),
+    fiveHour: flag('show5h'),
+    week: flag('showWeek'),
+    advisor: flag('showAdvisor'),
+    cache: flag('showCache'),
+    cost: flag('showCost'),
+    rate: flag('showRate'),
+    alerts: flag('showAlerts'),
+    detNow: flag('detailsNow'),
+    detLimits: flag('detailsLimits'),
+    detCache: flag('detailsCache'),
+    detSession: flag('detailsSession'),
+  }
+  const flashRaw = Number(o.advisorFlashSeconds)
+  // 0 turns the "Advisor consulted" note off; anything unusable falls back to the default.
+  const flashMs = (Number.isFinite(flashRaw) && flashRaw >= 0 ? flashRaw : ADVISOR_FLASH_SECONDS) * SEC
+
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: COMMAND, description: 'Status band: open or close details; hide, show' })
+    await $.command.register({
+      name: COMMAND,
+      description: 'Status band: open or close details; settings, set, hide, show',
+      argumentHint: 'settings | set <option> <value> | hide | show',
+    })
     await update($, now, () => 0)
     $.clock.every(SEC, async () => {
       if (await read($, hidden)) return
@@ -341,7 +406,9 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: COMMAND }, async ($, e) => {
-    const arg = e.args.trim().toLowerCase()
+    const [sub = '', ...rest] = e.args.trim().split(/\s+/)
+    const arg = sub.toLowerCase()
+    if (arg === 'settings' || arg === 'set') return { text: await settingsCommand($, arg, rest) }
     if (arg === 'hide') {
       await update($, hidden, () => true)
       return { text: `Status band hidden. Bring it back with /${COMMAND} show` }
@@ -382,7 +449,7 @@ export const register: Register = on => {
     const week = findLimit(l, 'seven_day')
     const ctxPct = l.context?.percent
     const rate = rateAt(list, t)
-    const alert = alertFor(l, hist, w, ttl, t, working)
+    const alert = opt.alerts ? alertFor(l, hist, w, ttl, t, working) : null
     const cacheLeft = w === null ? null : w.at + TTL_MS[ttl] - t
 
     const pct = (p: number | undefined) => (p === undefined ? '–' : `${Math.round(p)}%`)
@@ -400,7 +467,7 @@ export const register: Register = on => {
     )
 
     const lastAdv = adv.calls[adv.calls.length - 1]
-    const advFresh = lastAdv !== undefined && t - lastAdv.at < ADVISOR_FLASH ? lastAdv : undefined
+    const advFresh = opt.advisor && lastAdv !== undefined && t - lastAdv.at < flashMs ? lastAdv : undefined
 
     let right
     if (alert) {
@@ -421,7 +488,8 @@ export const register: Register = on => {
           </Text>
         </Text>
       )
-    } else if (working) {
+    } else if (working && opt.rate) {
+      // With the rate off, a working band falls through to the cache countdown.
       right = (
         <Text wrap="truncate">
           <Text color={C.live}>● </Text>
@@ -431,7 +499,7 @@ export const register: Register = on => {
           {tr && tr.endedAt === null ? <Text dimColor>{`  ⏱ ${fmtDur(t - tr.startedAt)}`}</Text> : null}
         </Text>
       )
-    } else if (w !== null && cacheLeft !== null) {
+    } else if (opt.cache && w !== null && cacheLeft !== null) {
       right = (
         <Text wrap="truncate">
           <Text color={cacheLeft > 0 ? C.ok : undefined} dimColor={cacheLeft <= 0}>
@@ -439,42 +507,51 @@ export const register: Register = on => {
           </Text>
           <Text dimColor>{cacheLeft > 0 ? 'Cache warm ' : 'Cache cold · next step re-sends '}</Text>
           <Text bold>{cacheLeft > 0 ? clockText(cacheLeft) : fmtTok(w.tokens)}</Text>
-          {l.usd !== null && !narrow ? <Text dimColor>{`  ·  ≈ ${usd(l.usd)}`}</Text> : null}
+          {opt.cost && l.usd !== null && !narrow ? <Text dimColor>{`  ·  ≈ ${usd(l.usd)}`}</Text> : null}
         </Text>
       )
-    } else if (l.usd !== null) {
+    } else if (opt.cost && l.usd !== null) {
       right = <Text dimColor>{`Session ≈ ${usd(l.usd)}`}</Text>
     }
 
-    const band = (
-      <Box key="sb-band" flexDirection="row" alignItems="center">
-        {gauge('g-ctx', 'Context', 'Ctx', ctxPct)}
-        {sep('s1')}
-        {gauge('g-5h', '5h', '5h', five?.percentUsed)}
-        {sep('s2')}
-        {gauge('g-wk', 'Week', 'Wk', week?.percentUsed)}
-        {adv.count > 0 ? sep('s3') : null}
-        {adv.count > 0 ? (
-          <Text key="g-adv" wrap="truncate">
-            <Text color={C.pro}>✦ </Text>
-            <Text dimColor>{narrow ? '' : 'Advisor '}</Text>
-            <Text bold>{String(adv.count)}</Text>
-          </Text>
-        ) : null}
-        <Box flexGrow={1} minWidth={2} />
-        {right ?? null}
-        <Text> </Text>
-        <Button
-          key="sb-toggle"
-          label={isOpen ? '▴' : '▾'}
-          plain
-          dimColor
-          onPress={() => update($, open, v => !v)}
-        />
-      </Box>
-    )
+    // Only the visible items, with a separator between neighbours and never at an end.
+    const left: unknown[] = []
+    const add = (node: unknown) => {
+      if (left.length) left.push(sep(`s${left.length}`))
+      left.push(node)
+    }
+    if (opt.context) add(gauge('g-ctx', 'Context', 'Ctx', ctxPct))
+    if (opt.fiveHour) add(gauge('g-5h', '5h', '5h', five?.percentUsed))
+    if (opt.week) add(gauge('g-wk', 'Week', 'Wk', week?.percentUsed))
+    if (opt.advisor && adv.count > 0)
+      add(
+        <Text key="g-adv" wrap="truncate">
+          <Text color={C.pro}>✦ </Text>
+          <Text dimColor>{narrow ? '' : 'Advisor '}</Text>
+          <Text bold>{String(adv.count)}</Text>
+        </Text>,
+      )
+
+    // Nothing left to say on the band itself: draw no row (the details can still open).
+    const band =
+      left.length === 0 && right === undefined ? null : (
+        <Box key="sb-band" flexDirection="row" alignItems="center">
+          {left as never}
+          <Box flexGrow={1} minWidth={2} />
+          {right ?? null}
+          <Text> </Text>
+          <Button
+            key="sb-toggle"
+            label={isOpen ? '▴' : '▾'}
+            plain
+            dimColor
+            onPress={() => update($, open, v => !v)}
+          />
+        </Box>
+      )
 
     if (!isOpen) {
+      if (band === null) return below
       return (
         <Box flexDirection="column">
           {below}
@@ -534,7 +611,7 @@ export const register: Register = on => {
 
     const rows = []
 
-    if (tr !== null || list.length) {
+    if (opt.detNow && (tr !== null || list.length)) {
       const b15 = buckets(list, t, 15)
       const peak = Math.max(0, ...b15)
       const sparkW = desktop ? 30 : Math.max(15, Math.min(60, barCols))
@@ -570,108 +647,114 @@ export const register: Register = on => {
               <Text bold>{fmtTok(tr.tokens)}</Text>
               <Text dimColor> new tokens</Text>
             </Text>,
-            spent !== null && spent > 0 ? `≈ ${usd(spent)}` : '',
+            opt.cost && spent !== null && spent > 0 ? `≈ ${usd(spent)}` : '',
           ),
         )
       }
     }
 
-    rows.push(section('h-lim', 'Limits'))
-    rows.push(
-      row(
-        'r-ctx',
-        'Context',
-        bar('b-ctx', ctxPct, C[level(ctxPct)]),
-        l.context ? `${l.context.tokens !== undefined ? fmtTok(l.context.tokens) : '–'} / ${fmtTok(l.context.window)}` : 'no reading yet',
-      ),
-    )
-    for (const [k, label, lim] of [
-      ['five', '5-hour', five],
-      ['week', 'Weekly', week],
-    ] as const) {
-      const reset = resetIn(lim, t)
+    if (opt.detLimits) {
+      rows.push(section('h-lim', 'Limits'))
       rows.push(
         row(
-          `r-${k}`,
-          label,
-          bar(`b-${k}`, lim?.percentUsed, C[level(lim?.percentUsed)]),
-          lim === undefined ? 'no reading yet' : reset !== null ? `resets in ${fmtDur(reset)}` : `${Math.round(lim.percentUsed)}% used`,
+          'r-ctx',
+          'Context',
+          bar('b-ctx', ctxPct, C[level(ctxPct)]),
+          l.context ? `${l.context.tokens !== undefined ? fmtTok(l.context.tokens) : '–'} / ${fmtTok(l.context.window)}` : 'no reading yet',
         ),
       )
+      for (const [k, label, lim] of [
+        ['five', '5-hour', five],
+        ['week', 'Weekly', week],
+      ] as const) {
+        const reset = resetIn(lim, t)
+        rows.push(
+          row(
+            `r-${k}`,
+            label,
+            bar(`b-${k}`, lim?.percentUsed, C[level(lim?.percentUsed)]),
+            lim === undefined ? 'no reading yet' : reset !== null ? `resets in ${fmtDur(reset)}` : `${Math.round(lim.percentUsed)}% used`,
+          ),
+        )
+      }
     }
 
-    rows.push(section('h-cache', 'Cache'))
-    if (w === null || cacheLeft === null) {
-      rows.push(row('r-cache', 'Status', 'Not warm yet — fills on the next step', `TTL ${ttl}`))
-    } else {
-      const isWarm = cacheLeft > 0
+    if (opt.detCache) {
+      rows.push(section('h-cache', 'Cache'))
+      if (w === null || cacheLeft === null) {
+        rows.push(row('r-cache', 'Status', 'Not warm yet — fills on the next step', `TTL ${ttl}`))
+      } else {
+        const isWarm = cacheLeft > 0
+        rows.push(
+          row(
+            'r-cache',
+            'Status',
+            <Text wrap="truncate">
+              <Text color={isWarm ? C.ok : undefined} bold>{isWarm ? 'Warm' : 'Cold'}</Text>
+              <Text dimColor>
+                {` · ${fmtTok(w.tokens)} ${isWarm ? 'kept' : 'to re-send'}${w.hitPct !== null ? ` · ${w.hitPct}% hit` : ''}`}
+              </Text>
+            </Text>,
+            `TTL ${ttl}`,
+          ),
+        )
+        const leftPct = (100 * Math.max(0, cacheLeft)) / TTL_MS[ttl]
+        const leftLevel: Level = !isWarm || cacheLeft <= (ttl === '1h' ? 5 * MIN : MIN) ? 'warn' : 'ok'
+        rows.push(
+          row(
+            'r-left',
+            'Time left',
+            bar('b-left', leftPct, C[leftLevel]),
+            isWarm ? `${fmtDur(cacheLeft)} · resets each step` : `cold for ${fmtDur(-cacheLeft)}`,
+          ),
+        )
+        rows.push(
+          row(
+            'r-expire',
+            isWarm ? 'If it expires' : 'Next step',
+            `Re-sends ${fmtTok(w.tokens)} at full price`,
+            `~${Math.round(WRITE_WEIGHT[ttl] / 0.1)}× a cached read`,
+          ),
+        )
+      }
+    }
+
+    if (opt.detSession) {
+      rows.push(section('h-sess', 'This session'))
       rows.push(
         row(
-          'r-cache',
-          'Status',
+          'r-new',
+          'New tokens',
           <Text wrap="truncate">
-            <Text color={isWarm ? C.ok : undefined} bold>{isWarm ? 'Warm' : 'Cold'}</Text>
-            <Text dimColor>
-              {` · ${fmtTok(w.tokens)} ${isWarm ? 'kept' : 'to re-send'}${w.hitPct !== null ? ` · ${w.hitPct}% hit` : ''}`}
-            </Text>
+            <Text bold>{fmtTok(tot.sent)}</Text>
+            <Text dimColor> you sent + </Text>
+            <Text bold>{fmtTok(tot.wrote)}</Text>
+            <Text dimColor> Claude wrote</Text>
           </Text>,
-          `TTL ${ttl}`,
+          'real work',
         ),
       )
-      const leftPct = (100 * Math.max(0, cacheLeft)) / TTL_MS[ttl]
-      const leftLevel: Level = !isWarm || cacheLeft <= (ttl === '1h' ? 5 * MIN : MIN) ? 'warn' : 'ok'
-      rows.push(
-        row(
-          'r-left',
-          'Time left',
-          bar('b-left', leftPct, C[leftLevel]),
-          isWarm ? `${fmtDur(cacheLeft)} · resets each step` : `cold for ${fmtDur(-cacheLeft)}`,
-        ),
-      )
-      rows.push(
-        row(
-          'r-expire',
-          isWarm ? 'If it expires' : 'Next step',
-          `Re-sends ${fmtTok(w.tokens)} at full price`,
-          `~${Math.round(WRITE_WEIGHT[ttl] / 0.1)}× a cached read`,
-        ),
-      )
+      rows.push(row('r-reread', 'Re-reads', `${fmtTok(tot.reread)} · conversation re-sent each step`, 'cheap, from cache'))
+      if (opt.cost && l.usd !== null) {
+        // Share of cost from re-reads, by relative price per token.
+        const weight = tot.sent + 0.1 * tot.reread + 5 * tot.wrote
+        const share = weight > 0 ? (0.1 * tot.reread) / weight : 0
+        rows.push(
+          row(
+            'r-cost',
+            'Cost',
+            <Text>
+              <Text dimColor>≈ </Text>
+              <Text bold>{usd(l.usd)}</Text>
+              <Text dimColor> total</Text>
+            </Text>,
+            share > 0.05 ? `re-reads ≈ ${usd(l.usd * share)}` : '',
+          ),
+        )
+      }
     }
 
-    rows.push(section('h-sess', 'This session'))
-    rows.push(
-      row(
-        'r-new',
-        'New tokens',
-        <Text wrap="truncate">
-          <Text bold>{fmtTok(tot.sent)}</Text>
-          <Text dimColor> you sent + </Text>
-          <Text bold>{fmtTok(tot.wrote)}</Text>
-          <Text dimColor> Claude wrote</Text>
-        </Text>,
-        'real work',
-      ),
-    )
-    rows.push(row('r-reread', 'Re-reads', `${fmtTok(tot.reread)} · conversation re-sent each step`, 'cheap, from cache'))
-    if (l.usd !== null) {
-      // Share of cost from re-reads, by relative price per token.
-      const weight = tot.sent + 0.1 * tot.reread + 5 * tot.wrote
-      const share = weight > 0 ? (0.1 * tot.reread) / weight : 0
-      rows.push(
-        row(
-          'r-cost',
-          'Cost',
-          <Text>
-            <Text dimColor>≈ </Text>
-            <Text bold>{usd(l.usd)}</Text>
-            <Text dimColor> total</Text>
-          </Text>,
-          share > 0.05 ? `re-reads ≈ ${usd(l.usd * share)}` : '',
-        ),
-      )
-    }
-
-    if (adv.count > 0 && lastAdv !== undefined) {
+    if (opt.advisor && adv.count > 0 && lastAdv !== undefined) {
       const timed = adv.calls.filter(c => c.ms !== null).map(c => c.ms as number)
       const waited = timed.reduce((a, b) => a + b, 0)
       const W = desktop ? 30 : Math.max(15, Math.min(40, barCols))
@@ -737,8 +820,23 @@ export const register: Register = on => {
         )
       rows.push(
         <Box key="r-adv-note">
-          <Text dimColor>The advisor's cost is in the ≈ $ total; its tokens aren't broken out.</Text>
+          <Text dimColor>
+            {opt.cost
+              ? "The advisor's cost is in the ≈ $ total; its tokens aren't broken out."
+              : "The advisor's tokens aren't broken out."}
+          </Text>
         </Box>,
+      )
+    }
+
+    // Every section switched off: no empty box.
+    if (rows.length === 0) {
+      if (band === null) return below
+      return (
+        <Box flexDirection="column">
+          {below}
+          {band}
+        </Box>
       )
     }
 

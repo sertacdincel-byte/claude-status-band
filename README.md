@@ -26,6 +26,52 @@ Opened with `/band`:
 - **Details:** `/band` (or the `▾` button) opens limits, cache, session token totals and an Advisor section with call count, time spent, a 60-minute trail and the last calls.
 - `/band hide` and `/band show` turn the band off and on.
 
+## Settings
+
+Everything on the band can be switched on or off; all options are on by default.
+
+| Option | What it controls |
+| --- | --- |
+| `showContext` | Context gauge |
+| `show5h` | 5-hour limit gauge |
+| `showWeek` | Weekly limit gauge |
+| `showAdvisor` | Advisor count, the "Advisor consulted" note and the Advisor section in the details |
+| `showCache` | Cache countdown on the right |
+| `showCost` | Every `≈ $` figure, on the band and in the details |
+| `showRate` | Live new-token rate while Claude works (off: the cache countdown shows instead) |
+| `showAlerts` | Warnings: context nearly full, a limit running out, the cache about to expire |
+| `detailsNow` | Details section "Right now" |
+| `detailsLimits` | Details section "Limits" |
+| `detailsCache` | Details section "Cache" |
+| `detailsSession` | Details section "This session" |
+| `advisorFlashSeconds` | Seconds the band says "Advisor consulted" after a call (default 12, `0` turns the note off) |
+
+Change them in any of three ways. A change reloads the mod.
+
+- **In a session, with `/band`** (works in the desktop app too):
+
+  ```
+  /band settings
+  /band set showCost off
+  /band set advisorFlashSeconds 30
+  ```
+
+  Values are `on` / `off` for switches and a number for `advisorFlashSeconds`.
+- **In `/config`**, where each option is a row (terminal sessions).
+- **In `settings.json`**, under `pluginConfigs`:
+
+  ```json
+  {
+    "pluginConfigs": {
+      "status-band": { "options": { "showCost": false, "showRate": false } }
+    }
+  }
+  ```
+
+  The key is the plugin's name. If a marketplace install doesn't pick it up, use `/band set` instead.
+
+If every item on the band is off, the band draws no row at all; `/band` still opens the details, and `/band hide` hides everything.
+
 ## Install
 
 You need a Claude Code build that supports mods (written and tested on 2.1.299). In a terminal session:
